@@ -15,27 +15,28 @@
  */
 package com.google.android.exoplayer2.extractor.ts;
 
+import com.google.android.exoplayer2.extractor.ExtractorOutput;
 import com.google.android.exoplayer2.extractor.TrackOutput;
 import com.google.android.exoplayer2.util.ParsableByteArray;
 
 /**
  * Extracts individual samples from an elementary media stream, preserving original order.
  */
-/* package */ abstract class ElementaryStreamReader {
-
-  protected final TrackOutput output;
-
-  /**
-   * @param output A {@link TrackOutput} to which samples should be written.
-   */
-  protected ElementaryStreamReader(TrackOutput output) {
-    this.output = output;
-  }
+public interface ElementaryStreamReader {
 
   /**
    * Notifies the reader that a seek has occurred.
    */
-  public abstract void seek();
+  void seek();
+
+  /**
+   * Initializes the reader by providing outputs and ids for the tracks.
+   *
+   * @param extractorOutput The {@link ExtractorOutput} that receives the extracted data.
+   * @param idGenerator A {@link PesReader.TrackIdGenerator} that generates unique track ids for the
+   *     {@link TrackOutput}s.
+   */
+  void createTracks(ExtractorOutput extractorOutput, PesReader.TrackIdGenerator idGenerator);
 
   /**
    * Called when a packet starts.
@@ -43,18 +44,18 @@ import com.google.android.exoplayer2.util.ParsableByteArray;
    * @param pesTimeUs The timestamp associated with the packet.
    * @param dataAlignmentIndicator The data alignment indicator associated with the packet.
    */
-  public abstract void packetStarted(long pesTimeUs, boolean dataAlignmentIndicator);
+  void packetStarted(long pesTimeUs, boolean dataAlignmentIndicator);
 
   /**
    * Consumes (possibly partial) data from the current packet.
    *
    * @param data The data to consume.
    */
-  public abstract void consume(ParsableByteArray data);
+  void consume(ParsableByteArray data);
 
   /**
    * Called when a packet ends.
    */
-  public abstract void packetFinished();
+  void packetFinished();
 
 }

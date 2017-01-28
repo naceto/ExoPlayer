@@ -15,15 +15,14 @@
  */
 package com.google.android.exoplayer2.extractor.ts;
 
-import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.extractor.TrackOutput;
-import com.google.android.exoplayer2.text.eia608.Eia608Decoder;
+import com.google.android.exoplayer2.text.cea.CeaUtil;
 import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.ParsableByteArray;
 
 /**
- * Consumes SEI buffers, outputting contained EIA608 messages to a {@link TrackOutput}.
+ * Consumes SEI buffers, outputting contained CEA-608 messages to a {@link TrackOutput}.
  */
 /* package */ final class SeiReader {
 
@@ -31,51 +30,12 @@ import com.google.android.exoplayer2.util.ParsableByteArray;
 
   public SeiReader(TrackOutput output) {
     this.output = output;
-    output.format(Format.createTextSampleFormat(null, MimeTypes.APPLICATION_EIA608, null,
+    output.format(Format.createTextSampleFormat(null, MimeTypes.APPLICATION_CEA608, null,
         Format.NO_VALUE, 0, null, null));
   }
 
   public void consume(long pesTimeUs, ParsableByteArray seiBuffer) {
-    int b;
-    while (seiBuffer.bytesLeft() > 1 /* last byte will be rbsp_trailing_bits */) {
-      // Parse payload type.
-      int payloadType = 0;
-      do {
-        b = seiBuffer.readUnsignedByte();
-        payloadType += b;
-      } while (b == 0xFF);
-      // Parse payload size.
-      int payloadSize = 0;
-      do {
-        b = seiBuffer.readUnsignedByte();
-        payloadSize += b;
-      } while (b == 0xFF);
-      // Process the payload.
-      if (Eia608Decoder.isSeiMessageEia608(payloadType, payloadSize, seiBuffer)) {
-        // Ignore country_code (1) + provider_code (2) + user_identifier (4)
-        // + user_data_type_code (1).
-        seiBuffer.skipBytes(8);
-        // Ignore first three bits: reserved (1) + process_cc_data_flag (1) + zero_bit (1).
-        int ccCount = seiBuffer.readUnsignedByte() & 0x1F;
-        seiBuffer.skipBytes(1);
-        int sampleBytes = 0;
-        for (int i = 0; i < ccCount; i++) {
-          int ccValidityAndType = seiBuffer.readUnsignedByte() & 0x07;
-          // Check that validity == 1 and type == 0.
-          if (ccValidityAndType != 0x04) {
-            seiBuffer.skipBytes(2);
-          } else {
-            sampleBytes += 2;
-            output.sampleData(seiBuffer, 2);
-          }
-        }
-        output.sampleMetadata(pesTimeUs, C.BUFFER_FLAG_KEY_FRAME, sampleBytes, 0, null);
-        // Ignore trailing information in SEI, if any.
-        seiBuffer.skipBytes(payloadSize - (10 + ccCount * 3));
-      } else {
-        seiBuffer.skipBytes(payloadSize);
-      }
-    }
+    CeaUtil.consume(pesTimeUs, seiBuffer, output);
   }
 
 }

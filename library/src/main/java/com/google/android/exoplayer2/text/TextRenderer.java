@@ -114,19 +114,11 @@ public final class TextRenderer extends BaseRenderer implements Callback {
 
   @Override
   protected void onPositionReset(long positionUs, boolean joining) {
+    clearOutput();
+    resetBuffers();
+    decoder.flush();
     inputStreamEnded = false;
     outputStreamEnded = false;
-    if (subtitle != null) {
-      subtitle.release();
-      subtitle = null;
-    }
-    if (nextSubtitle != null) {
-      nextSubtitle.release();
-      nextSubtitle = null;
-    }
-    nextInputBuffer = null;
-    clearOutput();
-    decoder.flush();
   }
 
   @Override
@@ -160,21 +152,27 @@ public final class TextRenderer extends BaseRenderer implements Callback {
       }
     }
 
-    if (nextSubtitle != null && nextSubtitle.timeUs <= positionUs) {
-      // Advance to the next subtitle. Sync the next event index and trigger an update.
-      if (subtitle != null) {
-        subtitle.release();
+    if (nextSubtitle != null) {
+      if (nextSubtitle.isEndOfStream()) {
+        if (!textRendererNeedsUpdate && getNextEventTime() == Long.MAX_VALUE) {
+          if (subtitle != null) {
+            subtitle.release();
+            subtitle = null;
+          }
+          nextSubtitle.release();
+          nextSubtitle = null;
+          outputStreamEnded = true;
+        }
+      } else if (nextSubtitle.timeUs <= positionUs) {
+        // Advance to the next subtitle. Sync the next event index and trigger an update.
+        if (subtitle != null) {
+          subtitle.release();
+        }
+        subtitle = nextSubtitle;
+        nextSubtitle = null;
+        nextSubtitleEventIndex = subtitle.getNextEventTimeIndex(positionUs);
+        textRendererNeedsUpdate = true;
       }
-      subtitle = nextSubtitle;
-      nextSubtitle = null;
-      if (subtitle.isEndOfStream()) {
-        outputStreamEnded = true;
-        subtitle.release();
-        subtitle = null;
-        return;
-      }
-      nextSubtitleEventIndex = subtitle.getNextEventTimeIndex(positionUs);
-      textRendererNeedsUpdate = true;
     }
 
     if (textRendererNeedsUpdate) {
@@ -214,18 +212,10 @@ public final class TextRenderer extends BaseRenderer implements Callback {
 
   @Override
   protected void onDisabled() {
-    if (subtitle != null) {
-      subtitle.release();
-      subtitle = null;
-    }
-    if (nextSubtitle != null) {
-      nextSubtitle.release();
-      nextSubtitle = null;
-    }
+    clearOutput();
+    resetBuffers();
     decoder.release();
     decoder = null;
-    nextInputBuffer = null;
-    clearOutput();
     super.onDisabled();
   }
 
@@ -239,6 +229,19 @@ public final class TextRenderer extends BaseRenderer implements Callback {
     // Don't block playback whilst subtitles are loading.
     // Note: To change this behavior, it will be necessary to consider [Internal: b/12949941].
     return true;
+  }
+
+  private void resetBuffers() {
+    nextInputBuffer = null;
+    nextSubtitleEventIndex = C.INDEX_UNSET;
+    if (subtitle != null) {
+      subtitle.release();
+      subtitle = null;
+    }
+    if (nextSubtitle != null) {
+      nextSubtitle.release();
+      nextSubtitle = null;
+    }
   }
 
   private long getNextEventTime() {

@@ -15,11 +15,13 @@
  */
 package com.google.android.exoplayer2.source;
 
+import android.support.annotation.IntDef;
+import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.MediaPeriod.Callback;
 import com.google.android.exoplayer2.upstream.Allocator;
-import com.google.android.exoplayer2.util.Assertions;
 import java.io.IOException;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -37,10 +39,15 @@ public final class MergingMediaSource implements MediaSource {
   public static final class IllegalMergeException extends IOException {
 
     /**
+     * The reason the merge failed.
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({REASON_WINDOWS_ARE_DYNAMIC, REASON_PERIOD_COUNT_MISMATCH})
+    public @interface Reason {}
+    /**
      * The merge failed because one of the sources being merged has a dynamic window.
      */
     public static final int REASON_WINDOWS_ARE_DYNAMIC = 0;
-
     /**
      * The merge failed because the sources have different period counts.
      */
@@ -50,13 +57,14 @@ public final class MergingMediaSource implements MediaSource {
      * The reason the merge failed. One of {@link #REASON_WINDOWS_ARE_DYNAMIC} and
      * {@link #REASON_PERIOD_COUNT_MISMATCH}.
      */
+    @Reason
     public final int reason;
 
     /**
      * @param reason The reason the merge failed. One of {@link #REASON_WINDOWS_ARE_DYNAMIC} and
      *     {@link #REASON_PERIOD_COUNT_MISMATCH}.
      */
-    public IllegalMergeException(int reason) {
+    public IllegalMergeException(@Reason int reason) {
       this.reason = reason;
     }
 
@@ -85,11 +93,11 @@ public final class MergingMediaSource implements MediaSource {
   }
 
   @Override
-  public void prepareSource(final Listener listener) {
+  public void prepareSource(ExoPlayer player, boolean isTopLevelSource, Listener listener) {
     this.listener = listener;
     for (int i = 0; i < mediaSources.length; i++) {
       final int sourceIndex = i;
-      mediaSources[sourceIndex].prepareSource(new Listener() {
+      mediaSources[sourceIndex].prepareSource(player, false, new Listener() {
         @Override
         public void onSourceInfoRefreshed(Timeline timeline, Object manifest) {
           handleSourceInfoRefreshed(sourceIndex, timeline, manifest);
@@ -109,16 +117,12 @@ public final class MergingMediaSource implements MediaSource {
   }
 
   @Override
-  public MediaPeriod createPeriod(int index, Callback callback, Allocator allocator,
-      long positionUs) {
+  public MediaPeriod createPeriod(int index, Allocator allocator, long positionUs) {
     MediaPeriod[] periods = new MediaPeriod[mediaSources.length];
-    // The periods are only referenced after they have all been prepared.
-    MergingMediaPeriod mergingPeriod = new MergingMediaPeriod(callback, periods);
     for (int i = 0; i < periods.length; i++) {
-      periods[i] = mediaSources[i].createPeriod(index, mergingPeriod, allocator, positionUs);
-      Assertions.checkState(periods[i] != null, "Child source must not return null period");
+      periods[i] = mediaSources[i].createPeriod(index, allocator, positionUs);
     }
-    return mergingPeriod;
+    return new MergingMediaPeriod(periods);
   }
 
   @Override

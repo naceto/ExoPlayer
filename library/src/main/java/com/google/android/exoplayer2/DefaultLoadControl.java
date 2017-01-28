@@ -19,6 +19,7 @@ import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.TrackSelectionArray;
 import com.google.android.exoplayer2.upstream.Allocator;
 import com.google.android.exoplayer2.upstream.DefaultAllocator;
+import com.google.android.exoplayer2.util.PriorityTaskManager;
 import com.google.android.exoplayer2.util.Util;
 
 /**
@@ -50,6 +51,11 @@ public final class DefaultLoadControl implements LoadControl {
    */
   public static final int DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS  = 5000;
 
+  /**
+   * Priority for media loading.
+   */
+  public static final int LOADING_PRIORITY = 0;
+
   private static final int ABOVE_HIGH_WATERMARK = 0;
   private static final int BETWEEN_WATERMARKS = 1;
   private static final int BELOW_LOW_WATERMARK = 2;
@@ -60,6 +66,7 @@ public final class DefaultLoadControl implements LoadControl {
   private final long maxBufferUs;
   private final long bufferForPlaybackUs;
   private final long bufferForPlaybackAfterRebufferUs;
+  private final PriorityTaskManager priorityTaskManager;
 
   private int targetBufferSize;
   private boolean isBuffering;
@@ -68,7 +75,7 @@ public final class DefaultLoadControl implements LoadControl {
    * Constructs a new instance, using the {@code DEFAULT_*} constants defined in this class.
    */
   public DefaultLoadControl() {
-    this(new DefaultAllocator(C.DEFAULT_BUFFER_SEGMENT_SIZE));
+    this(new DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE));
   }
 
   /**
@@ -97,11 +104,41 @@ public final class DefaultLoadControl implements LoadControl {
    */
   public DefaultLoadControl(DefaultAllocator allocator, int minBufferMs, int maxBufferMs,
       long bufferForPlaybackMs, long bufferForPlaybackAfterRebufferMs) {
+    this(allocator, minBufferMs, maxBufferMs, bufferForPlaybackMs, bufferForPlaybackAfterRebufferMs,
+        null);
+  }
+
+  /**
+   * Constructs a new instance.
+   *
+   * @param allocator The {@link DefaultAllocator} used by the loader.
+   * @param minBufferMs The minimum duration of media that the player will attempt to ensure is
+   *     buffered at all times, in milliseconds.
+   * @param maxBufferMs The maximum duration of media that the player will attempt buffer, in
+   *     milliseconds.
+   * @param bufferForPlaybackMs The duration of media that must be buffered for playback to start or
+   *     resume following a user action such as a seek, in milliseconds.
+   * @param bufferForPlaybackAfterRebufferMs The default duration of media that must be buffered for
+   *     playback to resume after a rebuffer, in milliseconds. A rebuffer is defined to be caused by
+   *     buffer depletion rather than a user action.
+   * @param priorityTaskManager If not null, registers itself as a task with priority
+   *     {@link #LOADING_PRIORITY} during loading periods, and unregisters itself during draining
+   *     periods.
+   */
+  public DefaultLoadControl(DefaultAllocator allocator, int minBufferMs, int maxBufferMs,
+      long bufferForPlaybackMs, long bufferForPlaybackAfterRebufferMs,
+      PriorityTaskManager priorityTaskManager) {
     this.allocator = allocator;
     minBufferUs = minBufferMs * 1000L;
     maxBufferUs = maxBufferMs * 1000L;
     bufferForPlaybackUs = bufferForPlaybackMs * 1000L;
     bufferForPlaybackAfterRebufferUs = bufferForPlaybackAfterRebufferMs * 1000L;
+    this.priorityTaskManager = priorityTaskManager;
+  }
+
+  @Override
+  public void onPrepared() {
+    reset(false);
   }
 
   @Override
@@ -117,9 +154,13 @@ public final class DefaultLoadControl implements LoadControl {
   }
 
   @Override
-  public void onTracksDisabled() {
-    targetBufferSize = 0;
-    isBuffering = false;
+  public void onStopped() {
+    reset(true);
+  }
+
+  @Override
+  public void onReleased() {
+    reset(true);
   }
 
   @Override
@@ -137,14 +178,33 @@ public final class DefaultLoadControl implements LoadControl {
   public boolean shouldContinueLoading(long bufferedDurationUs) {
     int bufferTimeState = getBufferTimeState(bufferedDurationUs);
     boolean targetBufferSizeReached = allocator.getTotalBytesAllocated() >= targetBufferSize;
+    boolean wasBuffering = isBuffering;
     isBuffering = bufferTimeState == BELOW_LOW_WATERMARK
         || (bufferTimeState == BETWEEN_WATERMARKS && isBuffering && !targetBufferSizeReached);
+    if (priorityTaskManager != null && isBuffering != wasBuffering) {
+      if (isBuffering) {
+        priorityTaskManager.add(LOADING_PRIORITY);
+      } else {
+        priorityTaskManager.remove(LOADING_PRIORITY);
+      }
+    }
     return isBuffering;
   }
 
   private int getBufferTimeState(long bufferedDurationUs) {
     return bufferedDurationUs > maxBufferUs ? ABOVE_HIGH_WATERMARK
         : (bufferedDurationUs < minBufferUs ? BELOW_LOW_WATERMARK : BETWEEN_WATERMARKS);
+  }
+
+  private void reset(boolean resetAllocator) {
+    targetBufferSize = 0;
+    if (priorityTaskManager != null && isBuffering) {
+      priorityTaskManager.remove(LOADING_PRIORITY);
+    }
+    isBuffering = false;
+    if (resetAllocator) {
+      allocator.reset();
+    }
   }
 
 }

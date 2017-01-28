@@ -18,7 +18,9 @@ package com.google.android.exoplayer2.demo;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.res.TypedArray;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.view.LayoutInflater;
@@ -31,8 +33,8 @@ import com.google.android.exoplayer2.source.TrackGroup;
 import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.trackselection.FixedTrackSelection;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
+import com.google.android.exoplayer2.trackselection.MappingTrackSelector.MappedTrackInfo;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector.SelectionOverride;
-import com.google.android.exoplayer2.trackselection.MappingTrackSelector.TrackInfo;
 import com.google.android.exoplayer2.trackselection.RandomTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelection;
 import com.google.android.exoplayer2.util.MimeTypes;
@@ -51,7 +53,7 @@ import java.util.Locale;
   private final MappingTrackSelector selector;
   private final TrackSelection.Factory adaptiveVideoTrackSelectionFactory;
 
-  private TrackInfo trackInfo;
+  private MappedTrackInfo trackInfo;
   private int rendererIndex;
   private TrackGroupArray trackGroups;
   private boolean[] trackGroupsAdaptive;
@@ -82,7 +84,7 @@ import java.util.Locale;
    * @param trackInfo The current track information.
    * @param rendererIndex The index of the renderer.
    */
-  public void showSelectionDialog(Activity activity, CharSequence title, TrackInfo trackInfo,
+  public void showSelectionDialog(Activity activity, CharSequence title, MappedTrackInfo trackInfo,
       int rendererIndex) {
     this.trackInfo = trackInfo;
     this.rendererIndex = rendererIndex;
@@ -100,7 +102,7 @@ import java.util.Locale;
 
     AlertDialog.Builder builder = new AlertDialog.Builder(activity);
     builder.setTitle(title)
-        .setView(buildView(LayoutInflater.from(builder.getContext())))
+        .setView(buildView(builder.getContext()))
         .setPositiveButton(android.R.string.ok, this)
         .setNegativeButton(android.R.string.cancel, null)
         .create()
@@ -108,13 +110,20 @@ import java.util.Locale;
   }
 
   @SuppressLint("InflateParams")
-  private View buildView(LayoutInflater inflater) {
+  private View buildView(Context context) {
+    LayoutInflater inflater = LayoutInflater.from(context);
     View view = inflater.inflate(R.layout.track_selection_dialog, null);
     ViewGroup root = (ViewGroup) view.findViewById(R.id.root);
+
+    TypedArray attributeArray = context.getTheme().obtainStyledAttributes(
+        new int[] {android.R.attr.selectableItemBackground});
+    int selectableItemBackgroundResourceId = attributeArray.getResourceId(0, 0);
+    attributeArray.recycle();
 
     // View for disabling the renderer.
     disableView = (CheckedTextView) inflater.inflate(
         android.R.layout.simple_list_item_single_choice, root, false);
+    disableView.setBackgroundResource(selectableItemBackgroundResourceId);
     disableView.setText(R.string.selection_disabled);
     disableView.setFocusable(true);
     disableView.setOnClickListener(this);
@@ -123,6 +132,7 @@ import java.util.Locale;
     // View for clearing the override to allow the selector to use its default selection logic.
     defaultView = (CheckedTextView) inflater.inflate(
         android.R.layout.simple_list_item_single_choice, root, false);
+    defaultView.setBackgroundResource(selectableItemBackgroundResourceId);
     defaultView.setText(R.string.selection_default);
     defaultView.setFocusable(true);
     defaultView.setOnClickListener(this);
@@ -146,6 +156,7 @@ import java.util.Locale;
             : android.R.layout.simple_list_item_single_choice;
         CheckedTextView trackView = (CheckedTextView) inflater.inflate(
             trackViewLayoutId, root, false);
+        trackView.setBackgroundResource(selectableItemBackgroundResourceId);
         trackView.setText(buildTrackName(group.getFormat(trackIndex)));
         if (trackInfo.getTrackFormatSupport(rendererIndex, groupIndex, trackIndex)
             == RendererCapabilities.FORMAT_HANDLED) {
@@ -169,6 +180,7 @@ import java.util.Locale;
       // View for using random adaptation.
       enableRandomAdaptationView = (CheckedTextView) inflater.inflate(
           android.R.layout.simple_list_item_multiple_choice, root, false);
+      enableRandomAdaptationView.setBackgroundResource(selectableItemBackgroundResourceId);
       enableRandomAdaptationView.setText(R.string.enable_random_adaptation);
       enableRandomAdaptationView.setOnClickListener(this);
       root.addView(inflater.inflate(R.layout.list_divider, root, false));
@@ -203,11 +215,7 @@ import java.util.Locale;
 
   @Override
   public void onClick(DialogInterface dialog, int which) {
-    if (isDisabled) {
-      selector.setRendererDisabled(rendererIndex, true);
-      return;
-    }
-    selector.setRendererDisabled(rendererIndex, false);
+    selector.setRendererDisabled(rendererIndex, isDisabled);
     if (override != null) {
       selector.setSelectionOverride(rendererIndex, trackGroups, override);
     } else {

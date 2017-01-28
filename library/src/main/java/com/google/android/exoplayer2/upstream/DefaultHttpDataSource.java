@@ -230,11 +230,14 @@ public class DefaultHttpDataSource implements HttpDataSource {
     bytesToSkip = responseCode == 200 && dataSpec.position != 0 ? dataSpec.position : 0;
 
     // Determine the length of the data to be read, after skipping.
-    if ((dataSpec.flags & DataSpec.FLAG_ALLOW_GZIP) == 0) {
-      long contentLength = getContentLength(connection);
-      bytesToRead = dataSpec.length != C.LENGTH_UNSET ? dataSpec.length
-          : contentLength != C.LENGTH_UNSET ? contentLength - bytesToSkip
-          : C.LENGTH_UNSET;
+    if (!dataSpec.isFlagSet(DataSpec.FLAG_ALLOW_GZIP)) {
+      if (dataSpec.length != C.LENGTH_UNSET) {
+        bytesToRead = dataSpec.length;
+      } else {
+        long contentLength = getContentLength(connection);
+        bytesToRead = contentLength != C.LENGTH_UNSET ? (contentLength - bytesToSkip)
+            : C.LENGTH_UNSET;
+      }
     } else {
       // Gzip is enabled. If the server opts to use gzip then the content length in the response
       // will be that of the compressed data, which isn't what we want. Furthermore, there isn't a
@@ -340,7 +343,7 @@ public class DefaultHttpDataSource implements HttpDataSource {
     byte[] postBody = dataSpec.postBody;
     long position = dataSpec.position;
     long length = dataSpec.length;
-    boolean allowGzip = (dataSpec.flags & DataSpec.FLAG_ALLOW_GZIP) != 0;
+    boolean allowGzip = dataSpec.isFlagSet(DataSpec.FLAG_ALLOW_GZIP);
 
     if (!allowCrossProtocolRedirects) {
       // HttpURLConnection disallows cross-protocol redirects, but otherwise performs redirection
@@ -410,11 +413,16 @@ public class DefaultHttpDataSource implements HttpDataSource {
     connection.setInstanceFollowRedirects(followRedirects);
     connection.setDoOutput(postBody != null);
     if (postBody != null) {
-      connection.setFixedLengthStreamingMode(postBody.length);
-      connection.connect();
-      OutputStream os = connection.getOutputStream();
-      os.write(postBody);
-      os.close();
+      connection.setRequestMethod("POST");
+      if (postBody.length == 0) {
+        connection.connect();
+      } else  {
+        connection.setFixedLengthStreamingMode(postBody.length);
+        connection.connect();
+        OutputStream os = connection.getOutputStream();
+        os.write(postBody);
+        os.close();
+      }
     } else {
       connection.connect();
     }
@@ -547,17 +555,21 @@ public class DefaultHttpDataSource implements HttpDataSource {
    * @throws IOException If an error occurs reading from the source.
    */
   private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
-    readLength = bytesToRead == C.LENGTH_UNSET ? readLength
-        : (int) Math.min(readLength, bytesToRead - bytesRead);
     if (readLength == 0) {
-      // We've read all of the requested data.
-      return C.RESULT_END_OF_INPUT;
+      return 0;
+    }
+    if (bytesToRead != C.LENGTH_UNSET) {
+      long bytesRemaining = bytesToRead - bytesRead;
+      if (bytesRemaining == 0) {
+        return C.RESULT_END_OF_INPUT;
+      }
+      readLength = (int) Math.min(readLength, bytesRemaining);
     }
 
     int read = inputStream.read(buffer, offset, readLength);
     if (read == -1) {
-      if (bytesToRead != C.LENGTH_UNSET && bytesToRead != bytesRead) {
-        // The server closed the connection having not sent sufficient data.
+      if (bytesToRead != C.LENGTH_UNSET) {
+        // End of stream reached having not read sufficient data.
         throw new EOFException();
       }
       return C.RESULT_END_OF_INPUT;

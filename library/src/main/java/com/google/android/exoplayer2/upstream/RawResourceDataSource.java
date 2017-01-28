@@ -54,7 +54,7 @@ public final class RawResourceDataSource implements DataSource {
    * @param rawResourceId A raw resource identifier (i.e. a constant defined in {@code R.raw}).
    * @return The corresponding {@link Uri}.
    */
-  public static final Uri buildRawResourceUri(int rawResourceId) {
+  public static Uri buildRawResourceUri(int rawResourceId) {
     return Uri.parse(RAW_RESOURCE_SCHEME + ":///" + rawResourceId);
   }
 
@@ -132,29 +132,35 @@ public final class RawResourceDataSource implements DataSource {
 
   @Override
   public int read(byte[] buffer, int offset, int readLength) throws RawResourceDataSourceException {
-    if (bytesRemaining == 0) {
+    if (readLength == 0) {
+      return 0;
+    } else if (bytesRemaining == 0) {
       return C.RESULT_END_OF_INPUT;
-    } else {
-      int bytesRead;
-      try {
-        int bytesToRead = bytesRemaining == C.LENGTH_UNSET ? readLength
-            : (int) Math.min(bytesRemaining, readLength);
-        bytesRead = inputStream.read(buffer, offset, bytesToRead);
-      } catch (IOException e) {
-        throw new RawResourceDataSourceException(e);
-      }
-
-      if (bytesRead > 0) {
-        if (bytesRemaining != C.LENGTH_UNSET) {
-          bytesRemaining -= bytesRead;
-        }
-        if (listener != null) {
-          listener.onBytesTransferred(this, bytesRead);
-        }
-      }
-
-      return bytesRead;
     }
+
+    int bytesRead;
+    try {
+      int bytesToRead = bytesRemaining == C.LENGTH_UNSET ? readLength
+          : (int) Math.min(bytesRemaining, readLength);
+      bytesRead = inputStream.read(buffer, offset, bytesToRead);
+    } catch (IOException e) {
+      throw new RawResourceDataSourceException(e);
+    }
+
+    if (bytesRead == -1) {
+      if (bytesRemaining != C.LENGTH_UNSET) {
+        // End of stream reached having not read sufficient data.
+        throw new RawResourceDataSourceException(new EOFException());
+      }
+      return C.RESULT_END_OF_INPUT;
+    }
+    if (bytesRemaining != C.LENGTH_UNSET) {
+      bytesRemaining -= bytesRead;
+    }
+    if (listener != null) {
+      listener.onBytesTransferred(this, bytesRead);
+    }
+    return bytesRead;
   }
 
   @Override

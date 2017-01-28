@@ -35,17 +35,17 @@ public final class ParsableByteArray {
   public ParsableByteArray() {}
 
   /**
-   * Creates a new instance with {@code length} bytes.
+   * Creates a new instance with {@code limit} bytes and sets the limit.
    *
-   * @param length The length of the array.
+   * @param limit The limit to set.
    */
-  public ParsableByteArray(int length) {
-    this.data = new byte[length];
-    limit = data.length;
+  public ParsableByteArray(int limit) {
+    this.data = new byte[limit];
+    this.limit = limit;
   }
 
   /**
-   * Creates a new instance wrapping {@code data}.
+   * Creates a new instance wrapping {@code data}, and sets the limit to {@code data.length}.
    *
    * @param data The array to wrap.
    */
@@ -58,7 +58,7 @@ public final class ParsableByteArray {
    * Creates a new instance that wraps an existing array.
    *
    * @param data The data to wrap.
-   * @param limit The limit.
+   * @param limit The limit to set.
    */
   public ParsableByteArray(byte[] data, int limit) {
     this.data = data;
@@ -79,7 +79,7 @@ public final class ParsableByteArray {
    * Updates the instance to wrap {@code data}, and resets the position to zero.
    *
    * @param data The array to wrap.
-   * @param limit The limit.
+   * @param limit The limit to set.
    */
   public void reset(byte[] data, int limit) {
     this.data = data;
@@ -195,6 +195,13 @@ public final class ParsableByteArray {
   }
 
   /**
+   * Peeks at the next byte as an unsigned value.
+   */
+  public int peekUnsignedByte() {
+    return (data[position] & 0xFF);
+  }
+
+  /**
    * Reads the next byte as an unsigned value.
    */
   public int readUnsignedByte() {
@@ -293,9 +300,9 @@ public final class ParsableByteArray {
    */
   public int readLittleEndianInt() {
     return (data[position++] & 0xFF)
-        | (data[position++]  & 0xFF) << 8
-        | (data[position++]  & 0xFF) << 16
-        | (data[position++]  & 0xFF) << 24;
+        | (data[position++] & 0xFF) << 8
+        | (data[position++] & 0xFF) << 16
+        | (data[position++] & 0xFF) << 24;
   }
 
   /**
@@ -430,21 +437,64 @@ public final class ParsableByteArray {
   }
 
   /**
+   * Reads the next {@code length} bytes as UTF-8 characters. A terminating NUL byte is discarded,
+   * if present.
+   *
+   * @param length The number of bytes to read.
+   * @return The string, not including any terminating NUL byte.
+   */
+  public String readNullTerminatedString(int length) {
+    if (length == 0) {
+      return "";
+    }
+    int stringLength = length;
+    int lastIndex = position + length - 1;
+    if (lastIndex < limit && data[lastIndex] == 0) {
+      stringLength--;
+    }
+    String result = new String(data, position, stringLength);
+    position += length;
+    return result;
+  }
+
+  /**
+   * Reads up to the next NUL byte (or the limit) as UTF-8 characters.
+   *
+   * @return The string not including any terminating NUL byte, or null if the end of the data has
+   *     already been reached.
+   */
+  public String readNullTerminatedString() {
+    if (bytesLeft() == 0) {
+      return null;
+    }
+    int stringLimit = position;
+    while (stringLimit < limit && data[stringLimit] != 0) {
+      stringLimit++;
+    }
+    String string = new String(data, position, stringLimit - position);
+    position = stringLimit;
+    if (position < limit) {
+      position++;
+    }
+    return string;
+  }
+
+  /**
    * Reads a line of text.
    * <p>
    * A line is considered to be terminated by any one of a carriage return ('\r'), a line feed
    * ('\n'), or a carriage return followed immediately by a line feed ('\r\n'). The system's default
    * charset (UTF-8) is used.
    *
-   * @return A String containing the contents of the line, not including any line-termination
-   *     characters, or null if the end of the stream has been reached.
+   * @return The line not including any line-termination characters, or null if the end of the data
+   *     has already been reached.
    */
   public String readLine() {
     if (bytesLeft() == 0) {
       return null;
     }
     int lineLimit = position;
-    while (lineLimit < limit && data[lineLimit] != '\n' && data[lineLimit] != '\r') {
+    while (lineLimit < limit && !Util.isLinebreak(data[lineLimit])) {
       lineLimit++;
     }
     if (lineLimit - position >= 3 && data[position] == (byte) 0xEF

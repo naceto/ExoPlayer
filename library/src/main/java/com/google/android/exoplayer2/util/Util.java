@@ -31,19 +31,16 @@ import android.view.Display;
 import android.view.WindowManager;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
+import com.google.android.exoplayer2.ParserException;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
@@ -67,7 +64,7 @@ public final class Util {
    * overridden for local testing.
    */
   public static final int SDK_INT =
-      (Build.VERSION.SDK_INT == 23 && Build.VERSION.CODENAME.charAt(0) == 'N') ? 24
+      (Build.VERSION.SDK_INT == 25 && Build.VERSION.CODENAME.charAt(0) == 'O') ? 26
       : Build.VERSION.SDK_INT;
 
   /**
@@ -89,36 +86,20 @@ public final class Util {
   public static final String MODEL = Build.MODEL;
 
   /**
-   * Value returned by {@link #inferContentType(String)} for DASH manifests.
+   * A concise description of the device that it can be useful to log for debugging purposes.
    */
-  public static final int TYPE_DASH = 0;
-
-  /**
-   * Value returned by {@link #inferContentType(String)} for Smooth Streaming manifests.
-   */
-  public static final int TYPE_SS = 1;
-
-  /**
-   * Value returned by {@link #inferContentType(String)} for HLS manifests.
-   */
-  public static final int TYPE_HLS = 2;
-
-  /**
-   * Value returned by {@link #inferContentType(String)} for files other than DASH, HLS or Smooth
-   * Streaming manifests.
-   */
-  public static final int TYPE_OTHER = 3;
+  public static final String DEVICE_DEBUG_INFO = DEVICE + ", " + MODEL + ", " + MANUFACTURER + ", "
+      + SDK_INT;
 
   private static final String TAG = "Util";
   private static final Pattern XS_DATE_TIME_PATTERN = Pattern.compile(
       "(\\d\\d\\d\\d)\\-(\\d\\d)\\-(\\d\\d)[Tt]"
       + "(\\d\\d):(\\d\\d):(\\d\\d)(\\.(\\d+))?"
-      + "([Zz]|((\\+|\\-)(\\d\\d):(\\d\\d)))?");
+      + "([Zz]|((\\+|\\-)(\\d\\d):?(\\d\\d)))?");
   private static final Pattern XS_DURATION_PATTERN =
       Pattern.compile("^(-)?P(([0-9]*)Y)?(([0-9]*)M)?(([0-9]*)D)?"
           + "(T(([0-9]*)H)?(([0-9]*)M)?(([0-9.]*)S)?)?$");
   private static final Pattern ESCAPED_CHARACTER_PATTERN = Pattern.compile("%([A-Fa-f0-9]{2})");
-  private static final char[] HEX_DIGITS = "0123456789ABCDEF".toCharArray();
 
   private Util() {}
 
@@ -229,20 +210,25 @@ public final class Util {
    */
   public static void closeQuietly(DataSource dataSource) {
     try {
-      dataSource.close();
+      if (dataSource != null) {
+        dataSource.close();
+      }
     } catch (IOException e) {
       // Ignore.
     }
   }
 
   /**
-   * Closes an {@link OutputStream}, suppressing any {@link IOException} that may occur.
+   * Closes a {@link Closeable}, suppressing any {@link IOException} that may occur. Both {@link
+   * java.io.OutputStream} and {@link InputStream} are {@code Closeable}.
    *
-   * @param outputStream The {@link OutputStream} to close.
+   * @param closeable The {@link Closeable} to close.
    */
-  public static void closeQuietly(OutputStream outputStream) {
+  public static void closeQuietly(Closeable closeable) {
     try {
-      outputStream.close();
+      if (closeable != null) {
+        closeable.close();
+      }
     } catch (IOException e) {
       // Ignore.
     }
@@ -266,6 +252,16 @@ public final class Util {
    */
   public static byte[] getUtf8Bytes(String value) {
     return value.getBytes(Charset.defaultCharset()); // UTF-8 is the default on Android.
+  }
+
+  /**
+   * Returns whether the given character is a carriage return ('\r') or a line feed ('\n').
+   *
+   * @param c The character.
+   * @return Whether the given character is a linebreak.
+   */
+  public static boolean isLinebreak(int c) {
+    return c == '\n' || c == '\r';
   }
 
   /**
@@ -313,110 +309,167 @@ public final class Util {
   }
 
   /**
-   * Returns the index of the largest value in an array that is less than (or optionally equal to)
-   * a specified value.
+   * Returns the index of the largest element in {@code array} that is less than (or optionally
+   * equal to) a specified {@code value}.
    * <p>
-   * The search is performed using a binary search algorithm, so the array must be sorted.
+   * The search is performed using a binary search algorithm, so the array must be sorted. If the
+   * array contains multiple elements equal to {@code value} and {@code inclusive} is true, the
+   * index of the first one will be returned.
    *
-   * @param a The array to search.
+   * @param array The array to search.
    * @param value The value being searched for.
    * @param inclusive If the value is present in the array, whether to return the corresponding
-   *     index. If false then the returned index corresponds to the largest value in the array that
-   *     is strictly less than the value.
+   *     index. If false then the returned index corresponds to the largest element strictly less
+   *     than the value.
    * @param stayInBounds If true, then 0 will be returned in the case that the value is smaller than
-   *     the smallest value in the array. If false then -1 will be returned.
+   *     the smallest element in the array. If false then -1 will be returned.
+   * @return The index of the largest element in {@code array} that is less than (or optionally
+   *     equal to) {@code value}.
    */
-  public static int binarySearchFloor(int[] a, int value, boolean inclusive, boolean stayInBounds) {
-    int index = Arrays.binarySearch(a, value);
-    index = index < 0 ? -(index + 2) : (inclusive ? index : (index - 1));
-    return stayInBounds ? Math.max(0, index) : index;
-  }
-
-  /**
-   * Returns the index of the largest value in an array that is less than (or optionally equal to)
-   * a specified value.
-   * <p>
-   * The search is performed using a binary search algorithm, so the array must be sorted.
-   *
-   * @param a The array to search.
-   * @param value The value being searched for.
-   * @param inclusive If the value is present in the array, whether to return the corresponding
-   *     index. If false then the returned index corresponds to the largest value in the array that
-   *     is strictly less than the value.
-   * @param stayInBounds If true, then 0 will be returned in the case that the value is smaller than
-   *     the smallest value in the array. If false then -1 will be returned.
-   */
-  public static int binarySearchFloor(long[] a, long value, boolean inclusive,
+  public static int binarySearchFloor(int[] array, int value, boolean inclusive,
       boolean stayInBounds) {
-    int index = Arrays.binarySearch(a, value);
-    index = index < 0 ? -(index + 2) : (inclusive ? index : (index - 1));
+    int index = Arrays.binarySearch(array, value);
+    if (index < 0) {
+      index = -(index + 2);
+    } else {
+      while ((--index) >= 0 && array[index] == value) {}
+      if (inclusive) {
+        index++;
+      }
+    }
     return stayInBounds ? Math.max(0, index) : index;
   }
 
   /**
-   * Returns the index of the smallest value in an array that is greater than (or optionally equal
-   * to) a specified value.
+   * Returns the index of the largest element in {@code array} that is less than (or optionally
+   * equal to) a specified {@code value}.
    * <p>
-   * The search is performed using a binary search algorithm, so the array must be sorted.
+   * The search is performed using a binary search algorithm, so the array must be sorted. If the
+   * array contains multiple elements equal to {@code value} and {@code inclusive} is true, the
+   * index of the first one will be returned.
    *
-   * @param a The array to search.
+   * @param array The array to search.
    * @param value The value being searched for.
    * @param inclusive If the value is present in the array, whether to return the corresponding
-   *     index. If false then the returned index corresponds to the largest value in the array that
-   *     is strictly less than the value.
+   *     index. If false then the returned index corresponds to the largest element strictly less
+   *     than the value.
+   * @param stayInBounds If true, then 0 will be returned in the case that the value is smaller than
+   *     the smallest element in the array. If false then -1 will be returned.
+   * @return The index of the largest element in {@code array} that is less than (or optionally
+   *     equal to) {@code value}.
+   */
+  public static int binarySearchFloor(long[] array, long value, boolean inclusive,
+      boolean stayInBounds) {
+    int index = Arrays.binarySearch(array, value);
+    if (index < 0) {
+      index = -(index + 2);
+    } else {
+      while ((--index) >= 0 && array[index] == value) {}
+      if (inclusive) {
+        index++;
+      }
+    }
+    return stayInBounds ? Math.max(0, index) : index;
+  }
+
+  /**
+   * Returns the index of the smallest element in {@code array} that is greater than (or optionally
+   * equal to) a specified {@code value}.
+   * <p>
+   * The search is performed using a binary search algorithm, so the array must be sorted. If
+   * the array contains multiple elements equal to {@code value} and {@code inclusive} is true, the
+   * index of the last one will be returned.
+   *
+   * @param array The array to search.
+   * @param value The value being searched for.
+   * @param inclusive If the value is present in the array, whether to return the corresponding
+   *     index. If false then the returned index corresponds to the smallest element strictly
+   *     greater than the value.
    * @param stayInBounds If true, then {@code (a.length - 1)} will be returned in the case that the
-   *     value is greater than the largest value in the array. If false then {@code a.length} will
+   *     value is greater than the largest element in the array. If false then {@code a.length} will
    *     be returned.
+   * @return The index of the smallest element in {@code array} that is greater than (or optionally
+   *     equal to) {@code value}.
    */
-  public static int binarySearchCeil(long[] a, long value, boolean inclusive,
+  public static int binarySearchCeil(long[] array, long value, boolean inclusive,
       boolean stayInBounds) {
-    int index = Arrays.binarySearch(a, value);
-    index = index < 0 ? ~index : (inclusive ? index : (index + 1));
-    return stayInBounds ? Math.min(a.length - 1, index) : index;
+    int index = Arrays.binarySearch(array, value);
+    if (index < 0) {
+      index = ~index;
+    } else {
+      while ((++index) < array.length && array[index] == value) {}
+      if (inclusive) {
+        index--;
+      }
+    }
+    return stayInBounds ? Math.min(array.length - 1, index) : index;
   }
 
   /**
-   * Returns the index of the largest value in an list that is less than (or optionally equal to)
-   * a specified value.
+   * Returns the index of the largest element in {@code list} that is less than (or optionally equal
+   * to) a specified {@code value}.
    * <p>
-   * The search is performed using a binary search algorithm, so the list must be sorted.
+   * The search is performed using a binary search algorithm, so the list must be sorted. If the
+   * list contains multiple elements equal to {@code value} and {@code inclusive} is true, the
+   * index of the first one will be returned.
    *
    * @param <T> The type of values being searched.
    * @param list The list to search.
    * @param value The value being searched for.
    * @param inclusive If the value is present in the list, whether to return the corresponding
-   *     index. If false then the returned index corresponds to the largest value in the list that
-   *     is strictly less than the value.
+   *     index. If false then the returned index corresponds to the largest element strictly less
+   *     than the value.
    * @param stayInBounds If true, then 0 will be returned in the case that the value is smaller than
-   *     the smallest value in the list. If false then -1 will be returned.
+   *     the smallest element in the list. If false then -1 will be returned.
+   * @return The index of the largest element in {@code list} that is less than (or optionally equal
+   *     to) {@code value}.
    */
   public static <T> int binarySearchFloor(List<? extends Comparable<? super T>> list, T value,
       boolean inclusive, boolean stayInBounds) {
     int index = Collections.binarySearch(list, value);
-    index = index < 0 ? -(index + 2) : (inclusive ? index : (index - 1));
+    if (index < 0) {
+      index = -(index + 2);
+    } else {
+      while ((--index) >= 0 && list.get(index).compareTo(value) == 0) {}
+      if (inclusive) {
+        index++;
+      }
+    }
     return stayInBounds ? Math.max(0, index) : index;
   }
 
   /**
-   * Returns the index of the smallest value in an list that is greater than (or optionally equal
-   * to) a specified value.
+   * Returns the index of the smallest element in {@code list} that is greater than (or optionally
+   * equal to) a specified value.
    * <p>
-   * The search is performed using a binary search algorithm, so the list must be sorted.
+   * The search is performed using a binary search algorithm, so the list must be sorted. If the
+   * list contains multiple elements equal to {@code value} and {@code inclusive} is true, the
+   * index of the last one will be returned.
    *
    * @param <T> The type of values being searched.
    * @param list The list to search.
    * @param value The value being searched for.
    * @param inclusive If the value is present in the list, whether to return the corresponding
-   *     index. If false then the returned index corresponds to the smallest value in the list that
-   *     is strictly greater than the value.
+   *     index. If false then the returned index corresponds to the smallest element strictly
+   *     greater than the value.
    * @param stayInBounds If true, then {@code (list.size() - 1)} will be returned in the case that
-   *     the value is greater than the largest value in the list. If false then {@code list.size()}
-   *     will be returned.
+   *     the value is greater than the largest element in the list. If false then
+   *     {@code list.size()} will be returned.
+   * @return The index of the smallest element in {@code list} that is greater than (or optionally
+   *     equal to) {@code value}.
    */
   public static <T> int binarySearchCeil(List<? extends Comparable<? super T>> list, T value,
       boolean inclusive, boolean stayInBounds) {
     int index = Collections.binarySearch(list, value);
-    index = index < 0 ? ~index : (inclusive ? index : (index + 1));
+    if (index < 0) {
+      index = ~index;
+    } else {
+      int listSize = list.size();
+      while ((++index) < listSize && list.get(index).compareTo(value) == 0) {}
+      if (inclusive) {
+        index--;
+      }
+    }
     return stayInBounds ? Math.min(list.size() - 1, index) : index;
   }
 
@@ -457,11 +510,12 @@ public final class Util {
    *
    * @param value The attribute value to decode.
    * @return The parsed timestamp in milliseconds since the epoch.
+   * @throws ParserException if an error occurs parsing the dateTime attribute value.
    */
-  public static long parseXsDateTime(String value) throws ParseException {
+  public static long parseXsDateTime(String value) throws ParserException {
     Matcher matcher = XS_DATE_TIME_PATTERN.matcher(value);
     if (!matcher.matches()) {
-      throw new ParseException("Invalid date/time format: " + value, 0);
+      throw new ParserException("Invalid date/time format: " + value);
     }
 
     int timezoneShift;
@@ -652,21 +706,6 @@ public final class Util {
   }
 
   /**
-   * Returns a hex string representation of the given byte array.
-   *
-   * @param bytes The byte array.
-   */
-  public static String getHexString(byte[] bytes) {
-    char[] hexChars = new char[bytes.length * 2];
-    int i = 0;
-    for (byte v : bytes) {
-      hexChars[i++] = HEX_DIGITS[(v >> 4) & 0xf];
-      hexChars[i++] = HEX_DIGITS[v & 0xf];
-    }
-    return new String(hexChars);
-  }
-
-  /**
    * Returns a string with comma delimited simple names of each object's class.
    *
    * @param objects The objects whose simple class names should be comma delimited and returned.
@@ -712,6 +751,7 @@ public final class Util {
    *     {@link C#ENCODING_PCM_32BIT}. If the bit depth is unsupported then
    *     {@link C#ENCODING_INVALID} is returned.
    */
+  @C.PcmEncoding
   public static int getPcmEncoding(int bitDepth) {
     switch (bitDepth) {
       case 8:
@@ -731,19 +771,20 @@ public final class Util {
    * Makes a best guess to infer the type from a file name.
    *
    * @param fileName Name of the file. It can include the path of the file.
-   * @return One of {@link #TYPE_DASH}, {@link #TYPE_SS}, {@link #TYPE_HLS} or {@link #TYPE_OTHER}.
+   * @return The content type.
    */
+  @C.ContentType
   public static int inferContentType(String fileName) {
     if (fileName == null) {
-      return TYPE_OTHER;
+      return C.TYPE_OTHER;
     } else if (fileName.endsWith(".mpd")) {
-      return TYPE_DASH;
+      return C.TYPE_DASH;
     } else if (fileName.endsWith(".ism") || fileName.endsWith(".isml")) {
-      return TYPE_SS;
+      return C.TYPE_SS;
     } else if (fileName.endsWith(".m3u8")) {
-      return TYPE_HLS;
+      return C.TYPE_HLS;
     } else {
-      return TYPE_OTHER;
+      return C.TYPE_OTHER;
     }
   }
 
@@ -871,6 +912,19 @@ public final class Util {
   }
 
   /**
+   * A hacky method that always throws {@code t} even if {@code t} is a checked exception,
+   * and is not declared to be thrown.
+   */
+  public static void sneakyThrow(Throwable t) {
+    Util.<RuntimeException>sneakyThrowInternal(t);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T extends Throwable> void sneakyThrowInternal(Throwable t) throws T {
+    throw (T) t;
+  }
+
+  /**
    * Returns the result of updating a CRC with the specified bytes in a "most significant bit first"
    * order.
    *
@@ -886,22 +940,6 @@ public final class Util {
           ^ CRC32_BYTES_MSBF[((initialValue >>> 24) ^ (bytes[i] & 0xFF)) & 0xFF];
     }
     return initialValue;
-  }
-
-  /**
-   * Returns the SHA-1 digest of {@code input} as a hex string.
-   *
-   * @param input The string whose SHA-1 digest is required.
-   */
-  public static String sha1(String input) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-1");
-      byte[] bytes = input.getBytes("UTF-8");
-      digest.update(bytes, 0, bytes.length);
-      return getHexString(digest.digest());
-    } catch (NoSuchAlgorithmException | UnsupportedEncodingException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   /**

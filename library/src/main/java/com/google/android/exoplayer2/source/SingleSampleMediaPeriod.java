@@ -28,6 +28,7 @@ import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.Loader;
 import com.google.android.exoplayer2.upstream.Loader.Loadable;
 import com.google.android.exoplayer2.util.Assertions;
+import com.google.android.exoplayer2.util.Util;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,7 +42,7 @@ import java.util.Arrays;
   /**
    * The initial size of the allocation used to hold the sample data.
    */
-  private static final int INITIAL_SAMPLE_SIZE = 1;
+  private static final int INITIAL_SAMPLE_SIZE = 1024;
 
   private final Uri uri;
   private final DataSource.Factory dataSourceFactory;
@@ -71,11 +72,15 @@ import java.util.Arrays;
     tracks = new TrackGroupArray(new TrackGroup(format));
     sampleStreams = new ArrayList<>();
     loader = new Loader("Loader:SingleSampleMediaPeriod");
-    sampleData = new byte[INITIAL_SAMPLE_SIZE];
   }
 
   public void release() {
     loader.release();
+  }
+
+  @Override
+  public void prepare(Callback callback) {
+    callback.onPrepared(this);
   }
 
   @Override
@@ -201,13 +206,13 @@ import java.util.Arrays;
 
     @Override
     public int readData(FormatHolder formatHolder, DecoderInputBuffer buffer) {
-      if (streamState == STREAM_STATE_END_OF_STREAM) {
-        buffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
-        return C.RESULT_BUFFER_READ;
-      } else if (streamState == STREAM_STATE_SEND_FORMAT) {
+      if (buffer == null || streamState == STREAM_STATE_SEND_FORMAT) {
         formatHolder.format = format;
         streamState = STREAM_STATE_SEND_SAMPLE;
         return C.RESULT_FORMAT_READ;
+      } else if (streamState == STREAM_STATE_END_OF_STREAM) {
+        buffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
+        return C.RESULT_BUFFER_READ;
       }
 
       Assertions.checkState(streamState == STREAM_STATE_SEND_SAMPLE);
@@ -264,13 +269,15 @@ import java.util.Arrays;
         int result = 0;
         while (result != C.RESULT_END_OF_INPUT) {
           sampleSize += result;
-          if (sampleSize == sampleData.length) {
+          if (sampleData == null) {
+            sampleData = new byte[INITIAL_SAMPLE_SIZE];
+          } else if (sampleSize == sampleData.length) {
             sampleData = Arrays.copyOf(sampleData, sampleData.length * 2);
           }
           result = dataSource.read(sampleData, sampleSize, sampleData.length - sampleSize);
         }
       } finally {
-        dataSource.close();
+        Util.closeQuietly(dataSource);
       }
     }
 

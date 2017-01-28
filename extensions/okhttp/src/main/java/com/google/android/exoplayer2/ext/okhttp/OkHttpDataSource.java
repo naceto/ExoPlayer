@@ -32,21 +32,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.CacheControl;
+import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * An {@link HttpDataSource} that delegates to Square's {@link OkHttpClient}.
+ * An {@link HttpDataSource} that delegates to Square's {@link Call.Factory}.
  */
 public class OkHttpDataSource implements HttpDataSource {
 
   private static final AtomicReference<byte[]> skipBufferReference = new AtomicReference<>();
 
-  private final OkHttpClient okHttpClient;
+  private final Call.Factory callFactory;
   private final String userAgent;
   private final Predicate<String> contentTypePredicate;
   private final TransferListener<? super OkHttpDataSource> listener;
@@ -65,43 +65,45 @@ public class OkHttpDataSource implements HttpDataSource {
   private long bytesRead;
 
   /**
-   * @param client An {@link OkHttpClient} for use by the source.
+   * @param callFactory A {@link Call.Factory} (typically an {@link okhttp3.OkHttpClient}) for use
+   *     by the source.
    * @param userAgent The User-Agent string that should be used.
    * @param contentTypePredicate An optional {@link Predicate}. If a content type is rejected by the
    *     predicate then a InvalidContentTypeException} is thrown from {@link #open(DataSpec)}.
    */
-  public OkHttpDataSource(OkHttpClient client, String userAgent,
+  public OkHttpDataSource(Call.Factory callFactory, String userAgent,
       Predicate<String> contentTypePredicate) {
-    this(client, userAgent, contentTypePredicate, null);
+    this(callFactory, userAgent, contentTypePredicate, null);
   }
 
   /**
-   * @param client An {@link OkHttpClient} for use by the source.
+   * @param callFactory A {@link Call.Factory} (typically an {@link okhttp3.OkHttpClient}) for use
+   *     by the source.
    * @param userAgent The User-Agent string that should be used.
    * @param contentTypePredicate An optional {@link Predicate}. If a content type is rejected by the
    *     predicate then a {@link InvalidContentTypeException} is thrown from
    *     {@link #open(DataSpec)}.
    * @param listener An optional listener.
    */
-  public OkHttpDataSource(OkHttpClient client, String userAgent,
+  public OkHttpDataSource(Call.Factory callFactory, String userAgent,
       Predicate<String> contentTypePredicate, TransferListener<? super OkHttpDataSource> listener) {
-    this(client, userAgent, contentTypePredicate, listener, null);
+    this(callFactory, userAgent, contentTypePredicate, listener, null);
   }
 
   /**
-   * @param client An {@link OkHttpClient} for use by the source.
+   * @param callFactory A {@link Call.Factory} (typically an {@link okhttp3.OkHttpClient}) for use
+   *     by the source.
    * @param userAgent The User-Agent string that should be used.
    * @param contentTypePredicate An optional {@link Predicate}. If a content type is rejected by the
    *     predicate then a {@link InvalidContentTypeException} is thrown from
    *     {@link #open(DataSpec)}.
    * @param listener An optional listener.
-   * @param cacheControl An optional {@link CacheControl} which sets all requests' Cache-Control
-   *     header. For example, you could force the network response for all requests.
+   * @param cacheControl An optional {@link CacheControl} for setting the Cache-Control header.
    */
-  public OkHttpDataSource(OkHttpClient client, String userAgent,
+  public OkHttpDataSource(Call.Factory callFactory, String userAgent,
       Predicate<String> contentTypePredicate, TransferListener<? super OkHttpDataSource> listener,
       CacheControl cacheControl) {
-    this.okHttpClient = Assertions.checkNotNull(client);
+    this.callFactory = Assertions.checkNotNull(callFactory);
     this.userAgent = Assertions.checkNotEmpty(userAgent);
     this.contentTypePredicate = contentTypePredicate;
     this.listener = listener;
@@ -150,7 +152,7 @@ public class OkHttpDataSource implements HttpDataSource {
     this.bytesSkipped = 0;
     Request request = makeRequest(dataSpec);
     try {
-      response = okHttpClient.newCall(request).execute();
+      response = callFactory.newCall(request).execute();
       responseByteStream = response.body().byteStream();
     } catch (IOException e) {
       throw new HttpDataSourceException("Unable to connect to " + dataSpec.uri.toString(), e,
@@ -185,9 +187,12 @@ public class OkHttpDataSource implements HttpDataSource {
     bytesToSkip = responseCode == 200 && dataSpec.position != 0 ? dataSpec.position : 0;
 
     // Determine the length of the data to be read, after skipping.
-    long contentLength = response.body().contentLength();
-    bytesToRead = dataSpec.length != C.LENGTH_UNSET ? dataSpec.length
-        : (contentLength != -1 ? (contentLength - bytesToSkip) : C.LENGTH_UNSET);
+    if (dataSpec.length != C.LENGTH_UNSET) {
+      bytesToRead = dataSpec.length;
+    } else {
+      long contentLength = response.body().contentLength();
+      bytesToRead = contentLength != -1 ? (contentLength - bytesToSkip) : C.LENGTH_UNSET;
+    }
 
     opened = true;
     if (listener != null) {
@@ -256,7 +261,7 @@ public class OkHttpDataSource implements HttpDataSource {
   private Request makeRequest(DataSpec dataSpec) {
     long position = dataSpec.position;
     long length = dataSpec.length;
-    boolean allowGzip = (dataSpec.flags & DataSpec.FLAG_ALLOW_GZIP) != 0;
+    boolean allowGzip = dataSpec.isFlagSet(DataSpec.FLAG_ALLOW_GZIP);
 
     HttpUrl url = HttpUrl.parse(dataSpec.uri.toString());
     Request.Builder builder = new Request.Builder().url(url);
@@ -338,17 +343,21 @@ public class OkHttpDataSource implements HttpDataSource {
    * @throws IOException If an error occurs reading from the source.
    */
   private int readInternal(byte[] buffer, int offset, int readLength) throws IOException {
-    readLength = bytesToRead == C.LENGTH_UNSET ? readLength
-        : (int) Math.min(readLength, bytesToRead - bytesRead);
     if (readLength == 0) {
-      // We've read all of the requested data.
-      return C.RESULT_END_OF_INPUT;
+      return 0;
+    }
+    if (bytesToRead != C.LENGTH_UNSET) {
+      long bytesRemaining = bytesToRead - bytesRead;
+      if (bytesRemaining == 0) {
+        return C.RESULT_END_OF_INPUT;
+      }
+      readLength = (int) Math.min(readLength, bytesRemaining);
     }
 
     int read = responseByteStream.read(buffer, offset, readLength);
     if (read == -1) {
-      if (bytesToRead != C.LENGTH_UNSET && bytesToRead != bytesRead) {
-        // The server closed the connection having not sent sufficient data.
+      if (bytesToRead != C.LENGTH_UNSET) {
+        // End of stream reached having not read sufficient data.
         throw new EOFException();
       }
       return C.RESULT_END_OF_INPUT;

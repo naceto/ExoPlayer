@@ -24,29 +24,25 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
         debug {
             jniDebuggable = true
-            debuggable = true
         }
     }
 
-    lintOptions {
-        abortOnError false
-    }
-
     productFlavors {
-        demo
-        demo_ext
+        noExtensions
+        withExtensions
     }
 }
 
 dependencies {
     compile project(':library')
-    demo_extCompile project(path: ':extension-ffmpeg')
-    demo_extCompile project(path: ':extension-flac')
-    demo_extCompile project(path: ':extension-opus')
-    demo_extCompile project(path: ':extension-vp9')
+    withExtensionsCompile project(path: ':extension-ffmpeg')
+    withExtensionsCompile project(path: ':extension-flac')
+    withExtensionsCompile project(path: ':extension-opus')
+    withExtensionsCompile project(path: ':extension-vp9')
 }

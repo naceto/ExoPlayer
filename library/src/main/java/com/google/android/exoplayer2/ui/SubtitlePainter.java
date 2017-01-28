@@ -66,9 +66,12 @@ import com.google.android.exoplayer2.util.Util;
   private CharSequence cueText;
   private Alignment cueTextAlignment;
   private float cueLine;
+  @Cue.LineType
   private int cueLineType;
+  @Cue.AnchorType
   private int cueLineAnchor;
   private float cuePosition;
+  @Cue.AnchorType
   private int cuePositionAnchor;
   private float cueSize;
   private boolean applyEmbeddedStyles;
@@ -76,6 +79,7 @@ import com.google.android.exoplayer2.util.Util;
   private int backgroundColor;
   private int windowColor;
   private int edgeColor;
+  @CaptionStyleCompat.EdgeType
   private int edgeType;
   private float textSizePx;
   private float bottomPaddingFraction;
@@ -142,9 +146,13 @@ import com.google.android.exoplayer2.util.Util;
       // Nothing to draw.
       return;
     }
+
+    int windowColor = cue.windowColorSet ? cue.windowColor : style.windowColor;
+
     if (!applyEmbeddedStyles) {
       // Strip out any embedded styling.
       cueText = cueText.toString();
+      windowColor = style.windowColor;
     }
     if (areCharSequencesEqual(this.cueText, cueText)
         && Util.areEqual(this.cueTextAlignment, cue.textAlignment)
@@ -157,7 +165,7 @@ import com.google.android.exoplayer2.util.Util;
         && this.applyEmbeddedStyles == applyEmbeddedStyles
         && this.foregroundColor == style.foregroundColor
         && this.backgroundColor == style.backgroundColor
-        && this.windowColor == style.windowColor
+        && this.windowColor == windowColor
         && this.edgeType == style.edgeType
         && this.edgeColor == style.edgeColor
         && Util.areEqual(this.textPaint.getTypeface(), style.typeface)
@@ -183,7 +191,7 @@ import com.google.android.exoplayer2.util.Util;
     this.applyEmbeddedStyles = applyEmbeddedStyles;
     this.foregroundColor = style.foregroundColor;
     this.backgroundColor = style.backgroundColor;
-    this.windowColor = style.windowColor;
+    this.windowColor = windowColor;
     this.edgeType = style.edgeType;
     this.edgeColor = style.edgeColor;
     this.textPaint.setTypeface(style.typeface);
@@ -248,7 +256,7 @@ import com.google.android.exoplayer2.util.Util;
         if (cueLine >= 0) {
           anchorPosition = Math.round(cueLine * firstLineHeight) + parentTop;
         } else {
-          anchorPosition = Math.round(cueLine * firstLineHeight) + parentBottom;
+          anchorPosition = Math.round((cueLine + 1) * firstLineHeight) + parentBottom;
         }
       }
       textTop = cueLineAnchor == Cue.ANCHOR_TYPE_END ? anchorPosition - textHeight

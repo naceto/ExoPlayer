@@ -17,9 +17,9 @@ package com.google.android.exoplayer2.source;
 
 import android.net.Uri;
 import android.os.Handler;
+import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.Timeline;
-import com.google.android.exoplayer2.source.MediaPeriod.Callback;
 import com.google.android.exoplayer2.upstream.Allocator;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.util.Assertions;
@@ -85,7 +85,7 @@ public final class SingleSampleMediaSource implements MediaSource {
   // MediaSource implementation.
 
   @Override
-  public void prepareSource(MediaSource.Listener listener) {
+  public void prepareSource(ExoPlayer player, boolean isTopLevelSource, Listener listener) {
     listener.onSourceInfoRefreshed(timeline, null);
   }
 
@@ -95,13 +95,10 @@ public final class SingleSampleMediaSource implements MediaSource {
   }
 
   @Override
-  public MediaPeriod createPeriod(int index, Callback callback, Allocator allocator,
-      long positionUs) {
+  public MediaPeriod createPeriod(int index, Allocator allocator, long positionUs) {
     Assertions.checkArgument(index == 0);
-    MediaPeriod mediaPeriod = new SingleSampleMediaPeriod(uri, dataSourceFactory, format,
-        minLoadableRetryCount, eventHandler, eventListener, eventSourceId);
-    callback.onPrepared(mediaPeriod);
-    return mediaPeriod;
+    return new SingleSampleMediaPeriod(uri, dataSourceFactory, format, minLoadableRetryCount,
+        eventHandler, eventListener, eventSourceId);
   }
 
   @Override

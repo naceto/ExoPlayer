@@ -101,7 +101,7 @@ public class DefaultSsChunkSource implements SsChunkSource {
           trackEncryptionBoxes, nalUnitLengthFieldLength, null, null);
       FragmentedMp4Extractor extractor = new FragmentedMp4Extractor(
           FragmentedMp4Extractor.FLAG_WORKAROUND_EVERY_VIDEO_FRAME_IS_SYNC_FRAME
-          | FragmentedMp4Extractor.FLAG_WORKAROUND_IGNORE_TFDT_BOX, track);
+          | FragmentedMp4Extractor.FLAG_WORKAROUND_IGNORE_TFDT_BOX, track, null);
       extractorWrappers[i] = new ChunkExtractorWrapper(extractor, format, false, false);
     }
   }
@@ -218,7 +218,7 @@ public class DefaultSsChunkSource implements SsChunkSource {
     // To convert them the absolute timestamps, we need to set sampleOffsetUs to chunkStartTimeUs.
     long sampleOffsetUs = chunkStartTimeUs;
     return new ContainerMediaChunk(dataSource, dataSpec, format, trackSelectionReason,
-        trackSelectionData, chunkStartTimeUs, chunkEndTimeUs, chunkIndex, sampleOffsetUs,
+        trackSelectionData, chunkStartTimeUs, chunkEndTimeUs, chunkIndex, 1, sampleOffsetUs,
         extractorWrapper, format);
   }
 

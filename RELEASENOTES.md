@@ -1,5 +1,114 @@
 # Release notes #
 
+### r2.1.1 ###
+
+Bugfix release only. Users of r2.1.0 and r2.0.x should proactively update to
+this version.
+
+* Fix some subtitle types (e.g. WebVTT) being displayed out of sync
+  ([#2208](https://github.com/google/ExoPlayer/issues/2208)).
+* Fix incorrect position reporting for on-demand HLS media that includes
+  EXT-X-PROGRAM-DATE-TIME tags
+  ([#2224](https://github.com/google/ExoPlayer/issues/2224)).
+* Fix issue where playbacks could get stuck in the initial buffering state if
+  over 1MB of data needs to be read to initialize the playback.
+
+### r2.1.0 ###
+
+* HLS: Support for seeking in live streams
+  ([#87](https://github.com/google/ExoPlayer/issues/87)).
+* HLS: Improved support:
+ * Support for EXT-X-PROGRAM-DATE-TIME
+   ([#747](https://github.com/google/ExoPlayer/issues/747)).
+ * Improved handling of sample timestamps and their alignment across variants
+   and renditions.
+ * Fix issue that could cause playbacks to get stuck in an endless initial
+   buffering state.
+ * Correctly propagate BehindLiveWindowException instead of
+   IndexOutOfBoundsException exception
+   ([#1695](https://github.com/google/ExoPlayer/issues/1695)).
+* MP3/MP4: Support for ID3 metadata, including embedded album art
+  ([#979](https://github.com/google/ExoPlayer/issues/979)).
+* Improved customization of UI components. You can read about customization of
+  ExoPlayer's UI components
+  [here](https://medium.com/google-exoplayer/customizing-exoplayers-ui-components-728cf55ee07a#.9ewjg7avi).
+* Robustness improvements when handling MediaSource timeline changes and
+  MediaPeriod transitions.
+* EIA608: Support for caption styling and positioning.
+* MPEG-TS: Improved support:
+ * Support injection of custom TS payload readers.
+ * Support injection of custom section payload readers.
+ * Support SCTE-35 splice information messages.
+ * Support multiple table sections in a single PSI section.
+ * Fix NullPointerException when an unsupported stream type is encountered
+   ([#2149](https://github.com/google/ExoPlayer/issues/2149)).
+ * Avoid failure when expected ID3 header not found
+   ([#1966](https://github.com/google/ExoPlayer/issues/1966)).
+* Improvements to the upstream cache package.
+ * Support caching of media segments for DASH, HLS and SmoothStreaming. Note
+   that caching of manifest and playlist files is still not supported in the
+   (normal) case where the corresponding responses are compressed.
+ * Support caching for ExtractorMediaSource based playbacks.
+* Improved flexibility of SimpleExoPlayer
+  ([#2102](https://github.com/google/ExoPlayer/issues/2102)).
+* Fix issue where only the audio of a video would play due to capability
+  detection issues ([#2007](https://github.com/google/ExoPlayer/issues/2007))
+  ([#2034](https://github.com/google/ExoPlayer/issues/2034))
+  ([#2157](https://github.com/google/ExoPlayer/issues/2157)).
+* Fix issues that could cause ExtractorMediaSource based playbacks to get stuck
+  buffering ([#1962](https://github.com/google/ExoPlayer/issues/1962)).
+* Correctly set SimpleExoPlayerView surface aspect ratio when an active player
+  is attached ([#2077](https://github.com/google/ExoPlayer/issues/2077)).
+* OGG: Fix playback of short OGG files
+  ([#1976](https://github.com/google/ExoPlayer/issues/1976)).
+* MP4: Support `.mp3` tracks
+  ([#2066](https://github.com/google/ExoPlayer/issues/2066)).
+* SubRip: Don't fail playbacks if SubRip file contains negative timestamps
+  ([#2145](https://github.com/google/ExoPlayer/issues/2145)).
+* Misc bugfixes.
+
+### r2.0.4 ###
+
+* Fix crash on Jellybean devices when using playback controls
+  ([#1965](https://github.com/google/ExoPlayer/issues/1965)).
+
+### r2.0.3 ###
+
+* Fixed NullPointerException in ExtractorMediaSource
+  ([#1914](https://github.com/google/ExoPlayer/issues/1914)).
+* Fixed NullPointerException in HlsMediaPeriod
+  ([#1907](https://github.com/google/ExoPlayer/issues/1907)).
+* Fixed memory leak in PlaybackControlView
+  ([#1908](https://github.com/google/ExoPlayer/issues/1908)).
+* Fixed strict mode violation when using
+  SimpleExoPlayer.setVideoPlayerTextureView().
+* Fixed L3 Widevine provisioning
+  ([#1925](https://github.com/google/ExoPlayer/issues/1925)).
+* Fixed hiding of controls with use_controller="false"
+  ([#1919](https://github.com/google/ExoPlayer/issues/1919)).
+* Improvements to Cronet network stack extension.
+* Misc bug fixes.
+
+### r2.0.2 ###
+
+* Fixes for MergingMediaSource and sideloaded subtitles.
+  ([#1882](https://github.com/google/ExoPlayer/issues/1882),
+  [#1854](https://github.com/google/ExoPlayer/issues/1854),
+  [#1900](https://github.com/google/ExoPlayer/issues/1900)).
+* Reduced effect of application code leaking player references
+  ([#1855](https://github.com/google/ExoPlayer/issues/1855)).
+* Initial support for fragmented MP4 in HLS.
+* Misc bug fixes and minor features.
+
+### r2.0.1 ###
+
+* Fix playback of short duration content
+  ([#1837](https://github.com/google/ExoPlayer/issues/1837)).
+* Fix MergingMediaSource preparation issue
+  ([#1853](https://github.com/google/ExoPlayer/issues/1853)).
+* Fix live stream buffering (out of memory) issue
+  ([#1825](https://github.com/google/ExoPlayer/issues/1825)).
+
 ### r2.0.0 ###
 
 ExoPlayer 2.x is a major iteration of the library. It includes significant API
@@ -67,6 +176,33 @@ some of the motivations behind ExoPlayer 2.x
    ([#583](https://github.com/google/ExoPlayer/issues/583)).
  * Suppressed "Sending message to a Handler on a dead thread" warnings
    ([#426](https://github.com/google/ExoPlayer/issues/426)).
+
+# Legacy release notes #
+
+Note: Since ExoPlayer V1 is still being maintained alongside V2, there is some
+overlap between these notes and the notes above. r2.0.0 followed from r1.5.11,
+and hence it can be assumed that all changes in r1.5.11 and earlier are included
+in all V2 releases. This cannot be assumed for changes in r1.5.12 and later,
+however it can be assumed that all such changes are included in the most recent
+V2 release.
+
+### r1.5.13 ###
+
+* Improvements to the upstream cache package.
+* MP4: Support `.mp3` tracks
+  ([#2066](https://github.com/google/ExoPlayer/issues/2066)).
+* SubRip: Don't fail playbacks if SubRip file contains negative timestamps
+  ([#2145](https://github.com/google/ExoPlayer/issues/2145)).
+* MPEG-TS: Avoid failure when expected ID3 header not found
+  ([#1966](https://github.com/google/ExoPlayer/issues/1966)).
+* Misc bugfixes.
+
+### r1.5.12 ###
+
+* Improvements to Cronet network stack extension.
+* Fix bug in demo app introduced in r1.5.11 that caused L3 Widevine
+  provisioning requests to fail.
+* Misc bugfixes.
 
 ### r1.5.11 ###
 
